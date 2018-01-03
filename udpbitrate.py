@@ -115,9 +115,11 @@ class UDPBitrate(QWidget):
 
     def onExportClick(self):
         image = QApplication.primaryScreen().grabWindow(self.chartview.winId()).toImage()
-        filename = QFileDialog.getSaveFileName(self, "Export Image", "./udpbitrate.png",
+        filename, filetype = QFileDialog.getSaveFileName(self, "Export Image", "./udpbitrate.png",
                                                "PNG Files (*.png);;JEPG Files (*.jpg);;All Files (*)")
         if filename:
+            ext = ".jpg" if ".jpg" in filetype else ".png"
+            filename = filename + ext if ext not in filename else filename
             image.save(filename)
 
 
