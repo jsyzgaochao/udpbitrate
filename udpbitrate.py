@@ -20,13 +20,16 @@ class UDPBitrate(QWidget):
         self.portLayout = QHBoxLayout()
         self.axisxLayout = QHBoxLayout()
         self.axisyLayout = QHBoxLayout()
+        self.smoothLayout = QHBoxLayout()
         self.btnsLayout = QHBoxLayout()
         self.lblPort = QLabel("Port: ")
         self.lblAxisX = QLabel("X-Axis(Time): ")
         self.lblAxisY = QLabel("Y-Axis(Bitrate): ")
+        self.lblSmooth = QLabel("Smooth: ")
         self.txtPort = QLineEdit()
         self.txtAxisX = QLineEdit()
         self.txtAxisY = QLineEdit()
+        self.txtSmooth = QLineEdit()
         self.chkMode = QCheckBox("Stack Mode")
         self.btnStart = QPushButton("Start")
         self.btnExport = QPushButton("Export")
@@ -42,14 +45,18 @@ class UDPBitrate(QWidget):
         self.axisyLayout.addWidget(self.lblAxisY)
         self.axisyLayout.addWidget(self.txtAxisY)
 
+        self.smoothLayout.addWidget(self.lblSmooth)
+        self.smoothLayout.addWidget(self.txtSmooth)
+
         self.btnsLayout.addWidget(self.chkMode)
         self.btnsLayout.addWidget(self.btnStart)
         self.btnsLayout.addWidget(self.btnExport)
 
-        self.headerLayout.addLayout(self.portLayout, 0, 0, 1, 4)
-        self.headerLayout.addLayout(self.axisxLayout, 0, 4, 1, 3)
-        self.headerLayout.addLayout(self.axisyLayout, 0, 7, 1, 3)
-        self.headerLayout.addLayout(self.btnsLayout, 0, 10, 1, 2)
+        self.headerLayout.addLayout(self.portLayout, 0, 0, 1, 3)
+        self.headerLayout.addLayout(self.axisxLayout, 0, 3, 1, 2)
+        self.headerLayout.addLayout(self.axisyLayout, 0, 5, 1, 2)
+        self.headerLayout.addLayout(self.smoothLayout, 0, 7, 1, 2)
+        self.headerLayout.addLayout(self.btnsLayout, 0, 9, 1, 2)
 
         self.chart = QChart()
         self.chartview = QChartView(self.chart)
@@ -71,14 +78,16 @@ class UDPBitrate(QWidget):
 
         self.ports = []
         self.udpthreads = []
+        self.smooth_alpha = 0.0
 
         if os.path.exists("udpbitrate.conf"):
             with open("udpbitrate.conf", "r") as fp:
                 try:
                     json_data = json.load(fp)
                     self.txtPort.setText(json_data.get("port",""))
-                    self.txtAxisX.setText(json_data.get("x-axis",""))
-                    self.txtAxisY.setText(json_data.get("y-axis",""))
+                    self.txtAxisX.setText(json_data.get("x-axis","1000s"))
+                    self.txtAxisY.setText(json_data.get("y-axis","10m"))
+                    self.txtSmooth.setText(json_data.get("smooth","0"))
                     self.chkMode.setChecked(json_data.get("mode",False))
                 finally:
                     pass
@@ -95,13 +104,16 @@ class UDPBitrate(QWidget):
             self.txtPort.setEnabled(False)
             self.txtAxisX.setEnabled(False)
             self.txtAxisY.setEnabled(False)
+            self.txtSmooth.setEnabled(False)
             self.parse_port()
             self.parse_axis_x()
             self.parse_axis_y()
+            self.parse_smooth()
             self.start_record()
             json_data = {"port":self.txtPort.text(),
                          "x-axis":self.txtAxisX.text(),
                          "y-axis":self.txtAxisY.text(),
+                         "smooth":self.txtSmooth.text(),
                          "mode":self.chkMode.isChecked()}
             with open("udpbitrate.conf", "w") as fp:
                 json.dump(json_data, fp)
@@ -111,6 +123,7 @@ class UDPBitrate(QWidget):
             self.txtPort.setEnabled(True)
             self.txtAxisX.setEnabled(True)
             self.txtAxisY.setEnabled(True)
+            self.txtSmooth.setEnabled(True)
             self.stop_record()
 
     def onExportClick(self):
@@ -141,9 +154,13 @@ class UDPBitrate(QWidget):
 
     def add_point(self, val, series):
         points = series.pointsVector()
-        if len(points) <= self.axis_x_resolution:
+        if len(points) == 0:
+            points.append(QPointF(len(points) * self.axis_x_step / self.axis_x_unit_scale[self.axis_x_unit], val))
+        elif len(points) <= self.axis_x_resolution:
+            val = self.smooth_alpha * points[-1].y() + (1 - self.smooth_alpha) * val
             points.append(QPointF(len(points) * self.axis_x_step / self.axis_x_unit_scale[self.axis_x_unit], val))
         else:
+            val = self.smooth_alpha * points[-1].y() + (1 - self.smooth_alpha) * val
             for i in range(len(points)-1):
                 points[i] = QPointF(i * self.axis_x_step / self.axis_x_unit_scale[self.axis_x_unit], points[i+1].y())
             points[-1] = QPointF(len(points) * self.axis_x_step / self.axis_x_unit_scale[self.axis_x_unit], val)
@@ -210,6 +227,15 @@ class UDPBitrate(QWidget):
                     self.axis_y_unit = 2
                 elif m.group(2) == "g":
                     self.axis_y_unit = 3
+
+    def parse_smooth(self):
+        self.smooth_alpha = 0.0
+        s = self.txtSmooth.text()
+        p = re.compile('^(\d+(?:\.\d+)?)\s?$')
+        m = p.match(s)
+        if m:
+            self.smooth_alpha = float(m.group(1))
+        self.smooth_alpha = self.smooth_alpha if self.smooth_alpha < 0.9999 else 0.9999
 
     def start_record(self):
         self.chart.removeAllSeries()

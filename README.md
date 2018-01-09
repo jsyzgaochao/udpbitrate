@@ -34,6 +34,10 @@ Configuration Description:
     - Specifying the full range of Y axis.
     - Example: 1000k *or* 10m
 
+- **Smooth(0~0.9999)**
+    - Specifying the coefficient of EMA(Exponential Moving Average) to smooth curves.
+    - Example: 0.9
+
 - **Stack Mode**
     - Specifying to use normal mode or stack mode.
     - **Normal**: Display the bitrates of each port independently, and the sum of the bitrates.
